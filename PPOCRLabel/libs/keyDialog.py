@@ -5,6 +5,7 @@ from PyQt5 import QtGui
 from PyQt5 import QtWidgets
 from PyQt5.Qt import QT_VERSION_STR
 from libs.utils import newIcon, labelValidator
+from typing import Union
 
 QT5 = QT_VERSION_STR[0] == '5'
 
@@ -22,6 +23,13 @@ class KeyQLineEdit(QtWidgets.QLineEdit):
             self.list_widget.keyPressEvent(e)
         else:
             super(KeyQLineEdit, self).keyPressEvent(e)
+    
+    def setText(self, a0: Union[str,int,None]) -> None:
+        if a0 is None:
+            a0 = ''
+        if isinstance(a0,int):
+            a0=str(a0)
+        return super().setText(str(a0))
 
 
 class KeyDialog(QtWidgets.QDialog):
@@ -47,7 +55,8 @@ class KeyDialog(QtWidgets.QDialog):
         self.edit.editingFinished.connect(self.postProcess)
         if flags:
             self.edit.textChanged.connect(self.updateFlags)
-            
+        
+        # Input target question id 
         self.edit_link = KeyQLineEdit()
         self.edit_link.setPlaceholderText('Enter question id')
         self.edit_link.editingFinished.connect(self.postProcess)
@@ -187,7 +196,7 @@ class KeyDialog(QtWidgets.QDialog):
             flags[item.text()] = item.isChecked()
         return flags
 
-    def popUp(self, text=None, move=True, flags=None):
+    def popUp(self, text=None, move=True, flags=None, link_id=None):
         if self._fit_to_content["row"]:
             self.labelList.setMinimumHeight(
                 self.labelList.sizeHintForRow(0) * self.labelList.count() + 2
@@ -196,15 +205,15 @@ class KeyDialog(QtWidgets.QDialog):
             self.labelList.setMinimumWidth(
                 self.labelList.sizeHintForColumn(0) + 2
             )
-        # if text is None, the previous label in self.edit is kept
-        if text is None:
-            text = self.edit.text()
+
         if flags:
             self.setFlags(flags)
         else:
             self.resetFlags(text)
         self.edit.setText(text)
         self.edit.setSelection(0, len(text))
+        
+        self.edit_link.setText(link_id)
 
         items = self.labelList.findItems(text, QtCore.Qt.MatchFixedString)
         if items:

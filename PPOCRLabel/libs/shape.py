@@ -46,7 +46,7 @@ class Shape(object):
     point_size = 8
     scale = 1.0
 
-    def __init__(self, label=None, line_color=None, difficult=False, key_cls="None", paintLabel=False, paintIdx=False):
+    def __init__(self, label=None, line_color=None, difficult=False, key_cls="None", paintLabel=False, paintIdx=False,link_id=None):
         self.label = label
         self.idx = None # bbox order, only for table annotation
         self.points = []
@@ -54,6 +54,7 @@ class Shape(object):
         self.selected = False
         self.difficult = difficult
         self.key_cls = key_cls
+        self.link_id = link_id
         self.paintLabel = paintLabel
         self.paintIdx = paintIdx
         self.locked = False
@@ -180,7 +181,7 @@ class Shape(object):
                     painter.setFont(font)
                     text = ''
                     if self.idx != None:
-                        text = str(self.idx)
+                        text = str(self.idx) + "->" + str(self.link_id)
                     if min_y < MIN_Y_LABEL:
                         min_y += MIN_Y_LABEL
                     painter.drawText(min_x, min_y, text)

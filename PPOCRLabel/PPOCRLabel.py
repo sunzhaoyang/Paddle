@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         # KIE setting
         self.kie_mode = kie_mode
         self.key_previous_text = ""
+        self.link_id_previous_text = None
         self.existed_key_cls_set = set()
         self.key_dialog_tip = getStr('keyDialogTip')
 
@@ -1149,8 +1150,8 @@ class MainWindow(QMainWindow):
     def loadLabels(self, shapes):
         s = []
         shape_index = 0
-        for label, points, line_color, key_cls, difficult in shapes:
-            shape = Shape(label=label, line_color=line_color, key_cls=key_cls)
+        for label, points, line_color, key_cls, difficult, link_id in shapes:
+            shape = Shape(label=label, line_color=line_color, key_cls=key_cls, link_id=link_id)
             for x, y in points:
 
                 # Ensure the labels are within the bounds of the image. If not, fix them.
@@ -1379,6 +1380,7 @@ class MainWindow(QMainWindow):
                 linking = [[shape.idx, link_id],] if link_id is not None else None
                 if key_text is not None:
                     shape = self.canvas.setLastLabel(text, None, None, key_text, linking)  # generate_color, generate_color
+                    shape.link_id = link_id
                     self.key_previous_text = key_text
                     if not self.keyList.findItemsByLabel(key_text):
                         item = self.keyList.createItemFromLabel(key_text)
@@ -1617,9 +1619,12 @@ class MainWindow(QMainWindow):
                 shapes.append(('锁定框：待检测', [[s[0] * width, s[1] * height] for s in box['ratio']],
                                DEFAULT_LOCK_COLOR, key_cls, box['difficult']))
         if imgidx in self.PPlabel.keys():
-            for box in self.PPlabel[imgidx]:
+            for idx, box in enumerate(self.PPlabel[imgidx]):
                 key_cls = 'None' if not self.kie_mode else box.get('key_cls', 'None')
-                shapes.append((box['transcription'], box['points'], None, key_cls, box.get('difficult', False)))
+                link_id = None
+                if box['linking'] and key_cls == "ANSWER":
+                    link_id = list(set(box['linking'][0]) ^ set([idx]))[0]
+                shapes.append((box['transcription'], box['points'], None, key_cls, box.get('difficult', False), link_id))
 
         if shapes != []:
             self.loadLabels(shapes)
@@ -2725,9 +2730,13 @@ class MainWindow(QMainWindow):
     def change_box_key(self):
         if not self.kie_mode:
             return
-        (key_text,link_id), _ = self.keyDialog.popUp(self.key_previous_text)
+        if len(self.canvas.selectedShapes) != 1:
+            return
+        current_shape = self.canvas.selectedShapes[0]
+        (key_text,link_id), _ = self.keyDialog.popUp(text=current_shape.key_cls, link_id=current_shape.link_id)
         if key_text:
             self.key_previous_text = key_text
+            self.link_id_previous_text = link_id
             for shape in self.canvas.selectedShapes:
                 shape.key_cls = key_text
                 if not self.keyList.findItemsByLabel(key_text):
@@ -2737,6 +2746,7 @@ class MainWindow(QMainWindow):
                     self.keyList.setItemLabel(item, key_text, rgb)
                     
                 if link_id is not None:
+                    shape.link_id = link_id
                     shape.linking = [[shape.idx, link_id],]
                 else:
                     shape.linking = []
@@ -2836,7 +2846,7 @@ def get_main_app(argv=[]):
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--lang", type=str, default='en', nargs="?")
     arg_parser.add_argument("--gpu", type=str2bool, default=True, nargs="?")
-    arg_parser.add_argument("--kie", type=str2bool, default=True, nargs="?")
+    arg_parser.add_argument("--kie", type=str2bool, default=False, nargs="?")
     arg_parser.add_argument("--predefined_classes_file",
                             default=os.path.join(os.path.dirname(__file__), "data", "predefined_classes.txt"),
                             nargs="?")
