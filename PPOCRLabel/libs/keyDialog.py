@@ -47,11 +47,16 @@ class KeyDialog(QtWidgets.QDialog):
         self.edit.editingFinished.connect(self.postProcess)
         if flags:
             self.edit.textChanged.connect(self.updateFlags)
+            
+        self.edit_link = KeyQLineEdit()
+        self.edit_link.setPlaceholderText('Enter question id')
+        self.edit_link.editingFinished.connect(self.postProcess)
 
         layout = QtWidgets.QVBoxLayout()
         if show_text_field:
             layout_edit = QtWidgets.QHBoxLayout()
             layout_edit.addWidget(self.edit, 6)
+            layout_edit.addWidget(self.edit_link,7)
             layout.addLayout(layout_edit)
         # buttons
         self.buttonBox = bb = QtWidgets.QDialogButtonBox(
@@ -211,6 +216,8 @@ class KeyDialog(QtWidgets.QDialog):
         if move:
             self.move(QtGui.QCursor.pos())
         if self.exec_():
-            return self.edit.text(), self.getFlags()
+            link_id = self.edit_link.text()
+            link_id = int(link_id) if link_id != '' else None
+            return (self.edit.text(), link_id), self.getFlags()
         else:
-            return None, None
+            return (None, None), None

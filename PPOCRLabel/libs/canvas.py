@@ -796,7 +796,7 @@ class Canvas(QWidget):
         points = [p1+p2 for p1, p2 in zip(self.selectedShape.points, [step]*4)]
         return True in map(self.outOfPixmap, points)
 
-    def setLastLabel(self, text, line_color=None, fill_color=None, key_cls=None):
+    def setLastLabel(self, text, line_color=None, fill_color=None, key_cls=None, linking=None):
         assert text
         self.shapes[-1].label = text
         if line_color:
@@ -807,6 +807,9 @@ class Canvas(QWidget):
 
         if key_cls:
             self.shapes[-1].key_cls = key_cls
+            
+        if linking:
+            self.shapes[-1].linking = linking
 
         self.storeShapes()
 

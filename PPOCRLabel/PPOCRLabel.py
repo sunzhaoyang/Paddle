@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
     def __init__(self,
                  lang="ch",
                  gpu=False,
-                 kie_mode=False,
+                 kie_mode=True,
                  default_filename=None,
                  default_predefined_class_file=None,
                  default_save_dir=None):
@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
 
         # Load string bundle for i18n
         if lang not in ['ch', 'en']:
-            lang = 'en'
+            lang = 'ch'
         self.stringBundle = StringBundle.getBundle(localeStr='zh-CN' if lang == 'ch' else 'en')  # 'en'
         getStr = lambda strId: self.stringBundle.getString(strId)
 
@@ -1209,12 +1209,14 @@ class MainWindow(QMainWindow):
 
         def format_shape(s):
             # print('s in saveLabels is ',s)
-            return dict(label=s.label,  # str
+            result = dict(label=s.label,  # str
                         line_color=s.line_color.getRgb(),
                         fill_color=s.fill_color.getRgb(),
                         points=[(int(p.x()), int(p.y())) for p in s.points],  # QPonitF
                         difficult=s.difficult,
                         key_cls=s.key_cls)  # bool
+            result['linking'] = s.linking if hasattr(s, 'linking') else []
+            return result
 
         if mode == 'Auto':
             shapes = []
@@ -1234,10 +1236,11 @@ class MainWindow(QMainWindow):
 
         try:
             trans_dic = []
-            for box in shapes:
+            for idx, box in enumerate(shapes):
+            # for box in shapes:
                 trans_dict = {"transcription": box['label'], "points": box['points'], "difficult": box['difficult']}
                 if self.kie_mode:
-                    trans_dict.update({"key_cls": box['key_cls']})
+                    trans_dict.update({"key_cls": box['key_cls'],"id":idx, "linking":box.get('linking',[])})
                 trans_dic.append(trans_dict)
             self.PPlabel[annotationFilePath] = trans_dic
             if mode == 'Auto':
@@ -1370,11 +1373,12 @@ class MainWindow(QMainWindow):
         if text is not None:
             self.prevLabelText = self.stringBundle.getString('tempLabel')
 
-            shape = self.canvas.setLastLabel(text, None, None, None)  # generate_color, generate_color
+            shape = self.canvas.setLastLabel(text, None, None, None,None)  # generate_color, generate_color
             if self.kie_mode:
-                key_text, _ = self.keyDialog.popUp(self.key_previous_text)
+                (key_text, link_id), _ = self.keyDialog.popUp(self.key_previous_text)
+                linking = [[shape.idx, link_id],] if link_id is not None else None
                 if key_text is not None:
-                    shape = self.canvas.setLastLabel(text, None, None, key_text)  # generate_color, generate_color
+                    shape = self.canvas.setLastLabel(text, None, None, key_text, linking)  # generate_color, generate_color
                     self.key_previous_text = key_text
                     if not self.keyList.findItemsByLabel(key_text):
                         item = self.keyList.createItemFromLabel(key_text)
@@ -1759,9 +1763,13 @@ class MainWindow(QMainWindow):
             return
         # load key_cls
         for image, info in label_dict.items():
-            for box in info:
+            for idx, box in enumerate(info):
                 if "key_cls" not in box:
                     box.update({"key_cls": "None"})
+                if "id" not in box:
+                    box.update({"id": idx})
+                if "linking" not in box:
+                    box['linking'] = []
                 self.existed_key_cls_set.add(box["key_cls"])
         if len(self.existed_key_cls_set) > 0:
             for key_text in self.existed_key_cls_set:
@@ -2619,7 +2627,22 @@ class MainWindow(QMainWindow):
                         labeldict[file] = []
         return labeldict
 
+    def updateRE(self):
+        for key in self.PPlabel:
+            for idx, box in enumerate(self.PPlabel[key]):
+                if box.get('linking') and box.get('key_cls') == "QUESTION":
+                    box['linking'] = []
+            for idx, box in enumerate(self.PPlabel[key]):
+                if box.get('linking') and box.get('key_cls') == "ANSWER":
+                    for linking in box['linking']:
+                        question_id = list(set(linking) ^ (set([idx])))[0]
+                        if self.PPlabel[key][question_id].get('linking') is None:
+                            self.PPlabel[key][question_id]['linking'] = []
+                            
+                        self.PPlabel[key][question_id]['linking'].append([question_id,idx])
+
     def savePPlabel(self, mode='Manual'):
+        self.updateRE()
         savedfile = [self.getImglabelidx(i) for i in self.fileStatedict.keys()]
         with open(self.PPlabelpath, 'w', encoding='utf-8') as f:
             for key in self.PPlabel:
@@ -2702,23 +2725,27 @@ class MainWindow(QMainWindow):
     def change_box_key(self):
         if not self.kie_mode:
             return
-        key_text, _ = self.keyDialog.popUp(self.key_previous_text)
-        if key_text is None:
-            return
-        self.key_previous_text = key_text
-        for shape in self.canvas.selectedShapes:
-            shape.key_cls = key_text
-            if not self.keyList.findItemsByLabel(key_text):
-                item = self.keyList.createItemFromLabel(key_text)
-                self.keyList.addItem(item)
-                rgb = self._get_rgb_by_label(key_text, self.kie_mode)
-                self.keyList.setItemLabel(item, key_text, rgb)
+        (key_text,link_id), _ = self.keyDialog.popUp(self.key_previous_text)
+        if key_text:
+            self.key_previous_text = key_text
+            for shape in self.canvas.selectedShapes:
+                shape.key_cls = key_text
+                if not self.keyList.findItemsByLabel(key_text):
+                    item = self.keyList.createItemFromLabel(key_text)
+                    self.keyList.addItem(item)
+                    rgb = self._get_rgb_by_label(key_text, self.kie_mode)
+                    self.keyList.setItemLabel(item, key_text, rgb)
+                    
+                if link_id is not None:
+                    shape.linking = [[shape.idx, link_id],]
+                else:
+                    shape.linking = []
 
-            self._update_shape_color(shape)
-            self.keyDialog.addLabelHistory(key_text)
+                self._update_shape_color(shape)
+                self.keyDialog.addLabelHistory(key_text)
             
-        # save changed shape
-        self.setDirty()
+            # save changed shape
+            self.setDirty()
 
     def undoShapeEdit(self):
         self.canvas.restoreShape()
@@ -2763,10 +2790,10 @@ class MainWindow(QMainWindow):
                 s.locked = True
             shapes = [format_shape(shape) for shape in self.canvas.selectedShapes]
             trans_dic = []
-            for box in shapes:
+            for idx, box in enumerate(shapes):
                 trans_dict = {"transcription": box['label'], "ratio": box['ratio'], "difficult": box['difficult']}
                 if self.kie_mode:
-                    trans_dict.update({"key_cls": box["key_cls"]})
+                    trans_dict.update({"key_cls": box["key_cls"],"id":idx, "linking":box.get('linking',[])})
                 trans_dic.append(trans_dict)
             self.canvas.lockedShapes = trans_dic
             self.actions.save.setEnabled(True)
@@ -2809,7 +2836,7 @@ def get_main_app(argv=[]):
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--lang", type=str, default='en', nargs="?")
     arg_parser.add_argument("--gpu", type=str2bool, default=True, nargs="?")
-    arg_parser.add_argument("--kie", type=str2bool, default=False, nargs="?")
+    arg_parser.add_argument("--kie", type=str2bool, default=True, nargs="?")
     arg_parser.add_argument("--predefined_classes_file",
                             default=os.path.join(os.path.dirname(__file__), "data", "predefined_classes.txt"),
                             nargs="?")
